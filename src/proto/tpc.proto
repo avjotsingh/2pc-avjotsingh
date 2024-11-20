@@ -1,0 +1,86 @@
+syntax = "proto3";
+import "google/protobuf/empty.proto";
+package tpc;
+
+service TpcServer {
+    rpc Transfer (TransferReq) returns (TransferRes) {}
+    rpc Balance (BalanceReq) returns (BalanceRes) {}
+    rpc Logs (google.protobuf.Empty) returns (LogRes) {}
+    rpc Prepare (PrepareReq) returns (PrepareRes) {}
+    rpc Accept (AcceptReq) returns (AcceptRes) {}
+    rpc Commit (CommitReq) returns (google.protobuf.Empty) {}
+    rpc Sync (SyncReq) returns (SyncRes) {}
+}
+
+message Transaction {
+    string sender = 1;
+    string receiver = 2;
+    int32 amount = 3;
+}
+
+message TransferReq {
+    Transaction txn = 1;
+    int32 tid = 2;
+}
+
+message TransferRes {
+    bool ack = 1;
+    int32 tid = 2;
+}
+
+message BalanceReq {
+    string client = 1;
+}
+
+message BalanceRes {
+    int32 amount = 1;
+}
+
+message LogRes {
+    repeated Transaction txns = 1;
+}
+
+message Ballot {
+    int32 num = 1;
+    int32 server_id = 2;
+}
+
+message PrepareReq {
+    Ballot ballot = 1;
+    int32 last_committed = 2;
+}
+
+message PrepareRes {
+    bool ack = 1;
+    Ballot ballot = 2;
+
+    optional Ballot accept_num = 4;
+    optional Transaction accept_val = 5;
+    optional int32 last_committed = 6;
+    optional int32 server_id = 3;
+
+}
+
+message AcceptReq {
+    Ballot ballot = 1;
+    Transaction txn = 2;
+}
+
+message AcceptRes {
+    bool ack = 1;
+    Ballot ballot = 2;
+}
+
+message CommitReq {
+    Ballot ballot = 1;
+}
+
+message SyncReq {
+    int32 last_committed = 1;
+}
+
+message SyncRes {
+    bool ack = 1;
+    repeated Transaction txns = 2;
+    Ballot last_committed_ballot = 3;
+}

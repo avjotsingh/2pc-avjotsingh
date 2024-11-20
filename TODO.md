@@ -1,0 +1,4 @@
+- Get the basic consensus within a cluster working
+- Client maintains state about which clusters are currently executing a transaction
+- Client checks if a transaction involves a cluster which is already executing something. If yes, then it waits otherwise it issues the transaction
+- 
