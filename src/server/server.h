@@ -5,6 +5,10 @@
 #include "tpc.grpc.pb.h"
 
 #include <string.h>
+#include <set>
+
+#include "../types/types.h"
+#include "wal.h"
 
 using grpc::Server;
 using grpc::CompletionQueue;
@@ -27,6 +31,8 @@ using tpc::AcceptRes;
 using tpc::CommitReq;
 using tpc::SyncReq;
 using tpc::SyncRes;
+using tpc::TpcTid;
+using tpc::LogEntry;
 
 // Server Implementation
 class ServerImpl final {
@@ -40,6 +46,9 @@ public:
     void handleAcceptReply(Status&, AcceptReq&, AcceptRes&);
     void handleSyncReply(Status&, SyncRes&);
     
+    bool processTpcPrepare(TransferReq&, TransferRes&);
+    void processTpcDecision(TpcTid&, bool);
+
     bool processTransferCall(TransferReq&, TransferRes&);
     void processPrepareCall(PrepareReq&, PrepareRes&);
     void processAcceptCall(AcceptReq&, AcceptRes&);
@@ -49,6 +58,13 @@ public:
     void processGetLogsCall(LogRes&);
     
 private:
+    bool runPaxos(TransferReq&, TransferRes&, bool write_to_wal);
+    void prepareTransaction(TransferReq& request, Ballot& ballot);
+    void commitTransaction(TransferReq& request, Ballot& ballot);
+    void getLogEntryFromLocalLog(types::WALEntry& log, LogEntry* entry);
+    bool isClientInCluster(int client_id);
+    bool isCrossShardTransaction(Transaction& transaction);
+
     std::shared_ptr<spdlog::logger> logger;
     int server_id;
     std::string server_name;
@@ -58,15 +74,19 @@ private:
     std::unique_ptr<CompletionQueue> response_cq;
     TpcServer::AsyncService service;
     std::unique_ptr<Server> server;
-    std::vector<std::unique_ptr<TpcServer::Stub>> stubs;
+    std::map<int, std::unique_ptr<TpcServer::Stub>> stubs;
 
     const static int CLUSTER_SIZE = 3;
     const static int MAJORITY = 2;
-    const static int RETRY_TIMEOUT_MS = 1000;
-    const static int RPC_TIMEOUT_MS = 10;
+    const static int RETRY_TIMEOUT_MS = 50;
+    const static int RPC_TIMEOUT_MS = 20;
 
-    std::map<std::string, int> balances;
-    std::vector<Transaction> log;
+    std::map<int, int> balances;
+    std::set<int> locks;
+    WAL wal;
+    std::vector<types::WALEntry> log;
+    bool is_paxos_running;
+    int paxos_tid;
 
     int ballot_num;
     bool promised;
@@ -74,10 +94,10 @@ private:
 
     bool accepted;
     Ballot accept_num;
-    Transaction accept_val;
+    TransferReq accept_val;
 
-    int last_committed;
-    Ballot last_committed_ballot;
+    int last_inserted;
+    Ballot last_inserted_ballot;
 
     bool in_sync;
     

@@ -21,25 +21,34 @@ void InCall::Proceed() {
     if (status_ == CREATE) {
         status_ = PROCESS;
         switch (type_) {
-            case types::TRANSFER: 
+            case types::RequestTypes::TPC_PREPARE:
+                service_->RequestTpcPrepare(&ctx_, &transferReq, &transferResponder, cq_, cq_, this);
+                break;
+            case types::RequestTypes::TPC_COMMIT:
+                service_->RequestTpcCommit(&ctx_, &tpcTid, &emptyResponder, cq_, cq_, this);
+                break;
+            case types::RequestTypes::TPC_ABORT:
+                service_->RequestTpcAbort(&ctx_, &tpcTid, &emptyResponder, cq_, cq_, this);
+                break;
+            case types::RequestTypes::TRANSFER: 
                 service_->RequestTransfer(&ctx_, &transferReq, &transferResponder, cq_, cq_, this);
                 break;
-            case types::BALANCE:
+            case types::RequestTypes::BALANCE:
                 service_->RequestBalance(&ctx_, &balanceReq, &balanceResponder, cq_, cq_, this);
                 break;
-            case types::LOGS:
+            case types::RequestTypes::LOGS:
                 service_->RequestLogs(&ctx_, &empty, &logResponder, cq_, cq_, this);
                 break;
-            case types::PREPARE:
+            case types::RequestTypes::PREPARE:
                 service_->RequestPrepare(&ctx_, &prepareReq, &prepareResponder, cq_, cq_, this);
                 break;
-            case types::ACCEPT:
+            case types::RequestTypes::ACCEPT:
                 service_->RequestAccept(&ctx_, &acceptReq, &acceptResponder, cq_, cq_, this);
                 break;
-            case types::COMMIT:
+            case types::RequestTypes::COMMIT:
                 service_->RequestCommit(&ctx_, &commitReq, &emptyResponder, cq_, cq_, this);
                 break;
-            case types::SYNC:
+            case types::RequestTypes::SYNC:
                 service_->RequestSync(&ctx_, &syncReq, &syncResponder, cq_, cq_, this);
                 break;
         }
@@ -47,7 +56,26 @@ void InCall::Proceed() {
     } else if (status_ == PROCESS || status_ == RETRY) {
         if (status_ == PROCESS) new InCall(service_, server_, cq_, type_, retry_timeout_ms_);
         switch (type_) {
-            case types::TRANSFER:
+            case types::RequestTypes::TPC_PREPARE:
+                if (!server_->processTpcPrepare(transferReq, transferRes)) {
+                    status_ = RETRY;
+                    Retry();
+                    break;
+                }
+                transferResponder.Finish(transferRes, Status::OK, this);
+                status_ = FINISH;
+                break;
+            case types::RequestTypes::TPC_COMMIT:
+                server_->processTpcDecision(tpcTid, true);
+                emptyResponder.Finish(empty, Status::OK, this);
+                status_ = FINISH;
+                break;
+            case types::RequestTypes::TPC_ABORT:
+                server_->processTpcDecision(tpcTid, false);
+                emptyResponder.Finish(empty, Status::OK, this);
+                status_ = FINISH;
+                break;
+            case types::RequestTypes::TRANSFER:
                 if (!server_->processTransferCall(transferReq, transferRes)) {
                     status_ = RETRY;
                     Retry();
@@ -56,37 +84,36 @@ void InCall::Proceed() {
                 transferResponder.Finish(transferRes, Status::OK, this);
                 status_ = FINISH;
                 break;
-            case types::PREPARE:
+            case types::RequestTypes::PREPARE:
                 server_->processPrepareCall(prepareReq, prepareRes);
                 prepareResponder.Finish(prepareRes, Status::OK, this);
                 status_ = FINISH;
                 break;
-            case types::ACCEPT:
+            case types::RequestTypes::ACCEPT:
                 server_->processAcceptCall(acceptReq, acceptRes);
                 acceptResponder.Finish(acceptRes, Status::OK, this);
                 status_ = FINISH;
                 break;
-            case types::COMMIT:
+            case types::RequestTypes::COMMIT:
                 server_->processCommitCall(commitReq);
                 emptyResponder.Finish(empty, Status::OK, this);
                 status_ = FINISH;
                 break;
-            case types::SYNC:
+            case types::RequestTypes::SYNC:
                 server_->processSyncCall(syncReq, syncRes);
                 syncResponder.Finish(syncRes, Status::OK, this);
                 status_ = FINISH;
                 break;
-            case types::BALANCE:
+            case types::RequestTypes::BALANCE:
                 server_->processGetBalanceCall(balanceReq, balanceRes);
                 balanceResponder.Finish(balanceRes, Status::OK, this);
                 status_ = FINISH;
                 break;
-            case types::LOGS:
+            case types::RequestTypes::LOGS:
                 server_->processGetLogsCall(logRes);
                 logResponder.Finish(logRes, Status::OK, this);
                 status_ = FINISH;
                 break;
-            
         }
 
     } else {

@@ -35,6 +35,21 @@ class TpcServerStub(object):
         Args:
             channel: A grpc.Channel.
         """
+        self.TpcPrepare = channel.unary_unary(
+                '/tpc.TpcServer/TpcPrepare',
+                request_serializer=tpc__pb2.TransferReq.SerializeToString,
+                response_deserializer=tpc__pb2.TransferRes.FromString,
+                _registered_method=True)
+        self.TpcCommit = channel.unary_unary(
+                '/tpc.TpcServer/TpcCommit',
+                request_serializer=tpc__pb2.TpcTid.SerializeToString,
+                response_deserializer=google_dot_protobuf_dot_empty__pb2.Empty.FromString,
+                _registered_method=True)
+        self.TpcAbort = channel.unary_unary(
+                '/tpc.TpcServer/TpcAbort',
+                request_serializer=tpc__pb2.TpcTid.SerializeToString,
+                response_deserializer=google_dot_protobuf_dot_empty__pb2.Empty.FromString,
+                _registered_method=True)
         self.Transfer = channel.unary_unary(
                 '/tpc.TpcServer/Transfer',
                 request_serializer=tpc__pb2.TransferReq.SerializeToString,
@@ -75,8 +90,28 @@ class TpcServerStub(object):
 class TpcServerServicer(object):
     """Missing associated documentation comment in .proto file."""
 
-    def Transfer(self, request, context):
+    def TpcPrepare(self, request, context):
+        """RPCs for the two phase commit
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def TpcCommit(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def TpcAbort(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Transfer(self, request, context):
+        """RPCs for paxos
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -120,6 +155,21 @@ class TpcServerServicer(object):
 
 def add_TpcServerServicer_to_server(servicer, server):
     rpc_method_handlers = {
+            'TpcPrepare': grpc.unary_unary_rpc_method_handler(
+                    servicer.TpcPrepare,
+                    request_deserializer=tpc__pb2.TransferReq.FromString,
+                    response_serializer=tpc__pb2.TransferRes.SerializeToString,
+            ),
+            'TpcCommit': grpc.unary_unary_rpc_method_handler(
+                    servicer.TpcCommit,
+                    request_deserializer=tpc__pb2.TpcTid.FromString,
+                    response_serializer=google_dot_protobuf_dot_empty__pb2.Empty.SerializeToString,
+            ),
+            'TpcAbort': grpc.unary_unary_rpc_method_handler(
+                    servicer.TpcAbort,
+                    request_deserializer=tpc__pb2.TpcTid.FromString,
+                    response_serializer=google_dot_protobuf_dot_empty__pb2.Empty.SerializeToString,
+            ),
             'Transfer': grpc.unary_unary_rpc_method_handler(
                     servicer.Transfer,
                     request_deserializer=tpc__pb2.TransferReq.FromString,
@@ -165,6 +215,87 @@ def add_TpcServerServicer_to_server(servicer, server):
  # This class is part of an EXPERIMENTAL API.
 class TpcServer(object):
     """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def TpcPrepare(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tpc.TpcServer/TpcPrepare',
+            tpc__pb2.TransferReq.SerializeToString,
+            tpc__pb2.TransferRes.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def TpcCommit(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tpc.TpcServer/TpcCommit',
+            tpc__pb2.TpcTid.SerializeToString,
+            google_dot_protobuf_dot_empty__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def TpcAbort(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tpc.TpcServer/TpcAbort',
+            tpc__pb2.TpcTid.SerializeToString,
+            google_dot_protobuf_dot_empty__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def Transfer(request,

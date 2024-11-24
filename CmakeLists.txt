@@ -47,6 +47,8 @@ add_subdirectory(spdlog)
 # Gather all .cc files in the server directory
 file(GLOB_RECURSE SERVER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/server/*.cc" "src/constants.h")
 
+message("Server sources ${SERVER_SOURCES}")
+
 # Build the server executable
 add_executable(server ${SERVER_SOURCES})
 target_link_libraries(server

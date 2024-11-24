@@ -3,6 +3,12 @@ import "google/protobuf/empty.proto";
 package tpc;
 
 service TpcServer {
+    // RPCs for the two phase commit
+    rpc TpcPrepare (TransferReq) returns (TransferRes) {}
+    rpc TpcCommit (TpcTid) returns (google.protobuf.Empty) {}
+    rpc TpcAbort (TpcTid) returns (google.protobuf.Empty) {}
+
+    // RPCs for paxos
     rpc Transfer (TransferReq) returns (TransferRes) {}
     rpc Balance (BalanceReq) returns (BalanceRes) {}
     rpc Logs (google.protobuf.Empty) returns (LogRes) {}
@@ -13,9 +19,13 @@ service TpcServer {
 }
 
 message Transaction {
-    string sender = 1;
-    string receiver = 2;
+    int32 sender = 1;
+    int32 receiver = 2;
     int32 amount = 3;
+}
+
+message TpcTid {
+    int32 tid = 1;
 }
 
 message TransferReq {
@@ -29,7 +39,7 @@ message TransferRes {
 }
 
 message BalanceReq {
-    string client = 1;
+    int32 client = 1;
 }
 
 message BalanceRes {
@@ -37,7 +47,7 @@ message BalanceRes {
 }
 
 message LogRes {
-    repeated Transaction txns = 1;
+    repeated LogEntry logs = 1;
 }
 
 message Ballot {
@@ -47,23 +57,23 @@ message Ballot {
 
 message PrepareReq {
     Ballot ballot = 1;
-    int32 last_committed = 2;
+    int32 last_inserted = 2;
 }
 
 message PrepareRes {
     bool ack = 1;
     Ballot ballot = 2;
 
-    optional Ballot accept_num = 4;
-    optional Transaction accept_val = 5;
-    optional int32 last_committed = 6;
-    optional int32 server_id = 3;
+    optional Ballot accept_num = 3;
+    optional TransferReq accept_val = 4;
+    optional int32 last_inserted = 5;
+    optional int32 server_id = 6;
 
 }
 
 message AcceptReq {
     Ballot ballot = 1;
-    Transaction txn = 2;
+    TransferReq r = 2;
 }
 
 message AcceptRes {
@@ -76,11 +86,20 @@ message CommitReq {
 }
 
 message SyncReq {
-    int32 last_committed = 1;
+    int32 last_inserted = 1;
+}
+
+message LogEntry {
+    Transaction txn = 1;
+    int32 tid = 2;
+    int32 type = 3;
+    int32 status = 4;
+    int32 ballot_num = 5;
+    int32 ballot_server_id = 6;
 }
 
 message SyncRes {
     bool ack = 1;
-    repeated Transaction txns = 2;
-    Ballot last_committed_ballot = 3;
+    repeated LogEntry logs = 2;
+    Ballot last_inserted_ballot = 3;
 }

@@ -5,7 +5,7 @@
 #include "absl/log/check.h"
 
 #include "server.h"
-#include "../types/request_types.h"
+#include "../types/types.h"
 
 using grpc::CompletionQueue;
 using grpc::ClientContext;

@@ -3,7 +3,7 @@
 #include "absl/log/check.h"
 
 #include "server.h"
-#include "../types/request_types.h"
+#include "../types/types.h"
 
 using grpc::ServerCompletionQueue;
 using grpc::ServerContext;
@@ -26,6 +26,7 @@ using tpc::AcceptRes;
 using tpc::CommitReq;
 using tpc::SyncReq;
 using tpc::SyncRes;
+using tpc::TpcTid;
 
 class InCall {
 public:
@@ -43,6 +44,7 @@ private:
     // Different request and response types that server can expect to
     // receive and send to the client
     Empty empty;
+    TpcTid tpcTid;
     TransferReq transferReq;
     TransferRes transferRes;
     BalanceReq balanceReq;

@@ -5,13 +5,13 @@ OutCall::OutCall(ServerImpl* server, CompletionQueue* cq, types::RequestTypes ty
 
 void OutCall::HandleRPCResponse() {
     switch (type_) {
-        case types::PREPARE:
+        case types::RequestTypes::PREPARE:
             server_->handlePrepareReply(status, prepareReq, prepareReply);
             break;
-        case types::ACCEPT:
+        case types::RequestTypes::ACCEPT:
             server_->handleAcceptReply(status, acceptReq, acceptReply);
             break;
-        case types::SYNC:
+        case types::RequestTypes::SYNC:
             server_->handleSyncReply(status, syncReply);
             break;
         default:

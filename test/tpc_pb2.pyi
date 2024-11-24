@@ -11,10 +11,16 @@ class Transaction(_message.Message):
     SENDER_FIELD_NUMBER: _ClassVar[int]
     RECEIVER_FIELD_NUMBER: _ClassVar[int]
     AMOUNT_FIELD_NUMBER: _ClassVar[int]
-    sender: str
-    receiver: str
+    sender: int
+    receiver: int
     amount: int
-    def __init__(self, sender: _Optional[str] = ..., receiver: _Optional[str] = ..., amount: _Optional[int] = ...) -> None: ...
+    def __init__(self, sender: _Optional[int] = ..., receiver: _Optional[int] = ..., amount: _Optional[int] = ...) -> None: ...
+
+class TpcTid(_message.Message):
+    __slots__ = ("tid",)
+    TID_FIELD_NUMBER: _ClassVar[int]
+    tid: int
+    def __init__(self, tid: _Optional[int] = ...) -> None: ...
 
 class TransferReq(_message.Message):
     __slots__ = ("txn", "tid")
@@ -35,8 +41,8 @@ class TransferRes(_message.Message):
 class BalanceReq(_message.Message):
     __slots__ = ("client",)
     CLIENT_FIELD_NUMBER: _ClassVar[int]
-    client: str
-    def __init__(self, client: _Optional[str] = ...) -> None: ...
+    client: int
+    def __init__(self, client: _Optional[int] = ...) -> None: ...
 
 class BalanceRes(_message.Message):
     __slots__ = ("amount",)
@@ -45,10 +51,10 @@ class BalanceRes(_message.Message):
     def __init__(self, amount: _Optional[int] = ...) -> None: ...
 
 class LogRes(_message.Message):
-    __slots__ = ("txns",)
-    TXNS_FIELD_NUMBER: _ClassVar[int]
-    txns: _containers.RepeatedCompositeFieldContainer[Transaction]
-    def __init__(self, txns: _Optional[_Iterable[_Union[Transaction, _Mapping]]] = ...) -> None: ...
+    __slots__ = ("logs",)
+    LOGS_FIELD_NUMBER: _ClassVar[int]
+    logs: _containers.RepeatedCompositeFieldContainer[LogEntry]
+    def __init__(self, logs: _Optional[_Iterable[_Union[LogEntry, _Mapping]]] = ...) -> None: ...
 
 class Ballot(_message.Message):
     __slots__ = ("num", "server_id")
@@ -59,34 +65,36 @@ class Ballot(_message.Message):
     def __init__(self, num: _Optional[int] = ..., server_id: _Optional[int] = ...) -> None: ...
 
 class PrepareReq(_message.Message):
-    __slots__ = ("ballot", "last_committed")
+    __slots__ = ("ballot", "last_inserted")
     BALLOT_FIELD_NUMBER: _ClassVar[int]
-    LAST_COMMITTED_FIELD_NUMBER: _ClassVar[int]
+    LAST_INSERTED_FIELD_NUMBER: _ClassVar[int]
     ballot: Ballot
-    last_committed: int
-    def __init__(self, ballot: _Optional[_Union[Ballot, _Mapping]] = ..., last_committed: _Optional[int] = ...) -> None: ...
+    last_inserted: int
+    def __init__(self, ballot: _Optional[_Union[Ballot, _Mapping]] = ..., last_inserted: _Optional[int] = ...) -> None: ...
 
 class PrepareRes(_message.Message):
-    __slots__ = ("ack", "ballot", "accept_num", "accept_val", "last_committed")
+    __slots__ = ("ack", "ballot", "accept_num", "accept_val", "last_inserted", "server_id")
     ACK_FIELD_NUMBER: _ClassVar[int]
     BALLOT_FIELD_NUMBER: _ClassVar[int]
     ACCEPT_NUM_FIELD_NUMBER: _ClassVar[int]
     ACCEPT_VAL_FIELD_NUMBER: _ClassVar[int]
-    LAST_COMMITTED_FIELD_NUMBER: _ClassVar[int]
+    LAST_INSERTED_FIELD_NUMBER: _ClassVar[int]
+    SERVER_ID_FIELD_NUMBER: _ClassVar[int]
     ack: bool
     ballot: Ballot
     accept_num: Ballot
-    accept_val: Transaction
-    last_committed: int
-    def __init__(self, ack: bool = ..., ballot: _Optional[_Union[Ballot, _Mapping]] = ..., accept_num: _Optional[_Union[Ballot, _Mapping]] = ..., accept_val: _Optional[_Union[Transaction, _Mapping]] = ..., last_committed: _Optional[int] = ...) -> None: ...
+    accept_val: TransferReq
+    last_inserted: int
+    server_id: int
+    def __init__(self, ack: bool = ..., ballot: _Optional[_Union[Ballot, _Mapping]] = ..., accept_num: _Optional[_Union[Ballot, _Mapping]] = ..., accept_val: _Optional[_Union[TransferReq, _Mapping]] = ..., last_inserted: _Optional[int] = ..., server_id: _Optional[int] = ...) -> None: ...
 
 class AcceptReq(_message.Message):
-    __slots__ = ("ballot", "txn")
+    __slots__ = ("ballot", "r")
     BALLOT_FIELD_NUMBER: _ClassVar[int]
-    TXN_FIELD_NUMBER: _ClassVar[int]
+    R_FIELD_NUMBER: _ClassVar[int]
     ballot: Ballot
-    txn: Transaction
-    def __init__(self, ballot: _Optional[_Union[Ballot, _Mapping]] = ..., txn: _Optional[_Union[Transaction, _Mapping]] = ...) -> None: ...
+    r: TransferReq
+    def __init__(self, ballot: _Optional[_Union[Ballot, _Mapping]] = ..., r: _Optional[_Union[TransferReq, _Mapping]] = ...) -> None: ...
 
 class AcceptRes(_message.Message):
     __slots__ = ("ack", "ballot")
@@ -103,17 +111,33 @@ class CommitReq(_message.Message):
     def __init__(self, ballot: _Optional[_Union[Ballot, _Mapping]] = ...) -> None: ...
 
 class SyncReq(_message.Message):
-    __slots__ = ("last_committed",)
-    LAST_COMMITTED_FIELD_NUMBER: _ClassVar[int]
-    last_committed: int
-    def __init__(self, last_committed: _Optional[int] = ...) -> None: ...
+    __slots__ = ("last_inserted",)
+    LAST_INSERTED_FIELD_NUMBER: _ClassVar[int]
+    last_inserted: int
+    def __init__(self, last_inserted: _Optional[int] = ...) -> None: ...
+
+class LogEntry(_message.Message):
+    __slots__ = ("txn", "tid", "type", "status", "ballot_num", "ballot_server_id")
+    TXN_FIELD_NUMBER: _ClassVar[int]
+    TID_FIELD_NUMBER: _ClassVar[int]
+    TYPE_FIELD_NUMBER: _ClassVar[int]
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    BALLOT_NUM_FIELD_NUMBER: _ClassVar[int]
+    BALLOT_SERVER_ID_FIELD_NUMBER: _ClassVar[int]
+    txn: Transaction
+    tid: int
+    type: int
+    status: int
+    ballot_num: int
+    ballot_server_id: int
+    def __init__(self, txn: _Optional[_Union[Transaction, _Mapping]] = ..., tid: _Optional[int] = ..., type: _Optional[int] = ..., status: _Optional[int] = ..., ballot_num: _Optional[int] = ..., ballot_server_id: _Optional[int] = ...) -> None: ...
 
 class SyncRes(_message.Message):
-    __slots__ = ("ack", "txns", "last_committed_ballot")
+    __slots__ = ("ack", "logs", "last_inserted_ballot")
     ACK_FIELD_NUMBER: _ClassVar[int]
-    TXNS_FIELD_NUMBER: _ClassVar[int]
-    LAST_COMMITTED_BALLOT_FIELD_NUMBER: _ClassVar[int]
+    LOGS_FIELD_NUMBER: _ClassVar[int]
+    LAST_INSERTED_BALLOT_FIELD_NUMBER: _ClassVar[int]
     ack: bool
-    txns: _containers.RepeatedCompositeFieldContainer[Transaction]
-    last_committed_ballot: Ballot
-    def __init__(self, ack: bool = ..., txns: _Optional[_Iterable[_Union[Transaction, _Mapping]]] = ..., last_committed_ballot: _Optional[_Union[Ballot, _Mapping]] = ...) -> None: ...
+    logs: _containers.RepeatedCompositeFieldContainer[LogEntry]
+    last_inserted_ballot: Ballot
+    def __init__(self, ack: bool = ..., logs: _Optional[_Iterable[_Union[LogEntry, _Mapping]]] = ..., last_inserted_ballot: _Optional[_Union[Ballot, _Mapping]] = ...) -> None: ...
