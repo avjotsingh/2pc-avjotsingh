@@ -31,6 +31,7 @@ using tpc::AcceptRes;
 using tpc::CommitReq;
 using tpc::SyncReq;
 using tpc::SyncRes;
+using tpc::DisconnectReq;
 using tpc::TpcTid;
 using tpc::LogEntry;
 
@@ -56,6 +57,7 @@ public:
     void processSyncCall(SyncReq&, SyncRes&);
     void processGetBalanceCall(BalanceReq&, BalanceRes&);
     void processGetLogsCall(LogRes&);
+    void processDisconnectCall(DisconnectReq&);
     
 private:
     bool runPaxos(TransferReq&, TransferRes&, bool write_to_wal);
@@ -63,7 +65,7 @@ private:
     void commitTransaction(TransferReq& request, Ballot& ballot);
     void getLogEntryFromLocalLog(types::WALEntry& log, LogEntry* entry);
     bool isClientInCluster(int client_id);
-    bool isCrossShardTransaction(Transaction& transaction);
+    void resetDisconnectedState();
 
     std::shared_ptr<spdlog::logger> logger;
     int server_id;
@@ -76,6 +78,9 @@ private:
     std::unique_ptr<Server> server;
     std::map<int, std::unique_ptr<TpcServer::Stub>> stubs;
 
+    bool i_am_disconnected;
+    std::map<int, bool> disconnected;
+
     const static int CLUSTER_SIZE = 3;
     const static int MAJORITY = 2;
     const static int RETRY_TIMEOUT_MS = 50;
@@ -86,7 +91,7 @@ private:
     WAL wal;
     std::vector<types::WALEntry> log;
     bool is_paxos_running;
-    int paxos_tid;
+    long paxos_tid;
 
     int ballot_num;
     bool promised;

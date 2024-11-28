@@ -16,6 +16,9 @@ service TpcServer {
     rpc Accept (AcceptReq) returns (AcceptRes) {}
     rpc Commit (CommitReq) returns (google.protobuf.Empty) {}
     rpc Sync (SyncReq) returns (SyncRes) {}
+
+    // RPCs to support the application
+    rpc Disconnect(DisconnectReq) returns (google.protobuf.Empty) {}
 }
 
 message Transaction {
@@ -25,17 +28,17 @@ message Transaction {
 }
 
 message TpcTid {
-    int32 tid = 1;
+    int64 tid = 1;
 }
 
 message TransferReq {
     Transaction txn = 1;
-    int32 tid = 2;
+    int64 tid = 2;
 }
 
 message TransferRes {
     bool ack = 1;
-    int32 tid = 2;
+    int64 tid = 2;
 }
 
 message BalanceReq {
@@ -91,7 +94,7 @@ message SyncReq {
 
 message LogEntry {
     Transaction txn = 1;
-    int32 tid = 2;
+    int64 tid = 2;
     int32 type = 3;
     int32 status = 4;
     int32 ballot_num = 5;
@@ -102,4 +105,8 @@ message SyncRes {
     bool ack = 1;
     repeated LogEntry logs = 2;
     Ballot last_inserted_ballot = 3;
+}
+
+message DisconnectReq {
+    repeated string servers = 1;
 }

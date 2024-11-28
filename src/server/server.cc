@@ -7,6 +7,7 @@
 #include "in_call.h"
 #include "out_call.h"
 #include "../constants.h"
+#include "../utils/utils.h"
 
 using grpc::ServerBuilder;
 using grpc::ServerCompletionQueue;
@@ -17,13 +18,14 @@ using grpc::Server;
 ServerImpl::ServerImpl(int id, std::string name): wal("wal_" + std::to_string(id) + ".log") {
     logger = spdlog::get("console");
 
-    server_id = id; //% ServerImpl::CLUSTER_SIZE;
+    server_id = id;
     server_name = name;
-    cluster_id = 1 + (server_id / 3);
+    cluster_id = utils::getClusterIdFromServerId(id);
     
+    resetDisconnectedState();
     balances = std::map<int, int>();
-    for (int i = 1 + (cluster_id - 1) * 1000; i <= cluster_id * 1000; i++) {
-        balances[i] = 10;
+    for (int i = 1; i <= constants::total_clients; i++) {
+        if (utils::isClientInCluster(i, cluster_id)) balances[i] = 10;
     }
     
     is_paxos_running = false;
@@ -54,7 +56,7 @@ void ServerImpl::run(std::string address) {
     for (auto& pair: constants::server_ids) {
         std::string name = pair.first;
         int id = pair.second;
-        if (id != server_id && constants::cluster_ids[name] == cluster_id) {
+        if (id != server_id && utils::getClusterIdFromServerId(id) == cluster_id) {
             stubs[id] = TpcServer::NewStub(grpc::CreateChannel(constants::server_addresses[name], grpc::InsecureChannelCredentials()));    
         }
     }
@@ -74,6 +76,7 @@ void ServerImpl::HandleRPCs() {
     new InCall(&service, this, request_cq.get(), types::RequestTypes::ACCEPT, ServerImpl::RETRY_TIMEOUT_MS);
     new InCall(&service, this, request_cq.get(), types::RequestTypes::COMMIT, ServerImpl::RETRY_TIMEOUT_MS);
     new InCall(&service, this, request_cq.get(), types::RequestTypes::SYNC, ServerImpl::RETRY_TIMEOUT_MS);
+    new InCall(&service, this, request_cq.get(), types::RequestTypes::DISCONNECT, ServerImpl::RETRY_TIMEOUT_MS);
 
     void* request_tag;
     bool request_ok;
@@ -100,25 +103,27 @@ void ServerImpl::HandleRPCs() {
 }
 
 bool ServerImpl::isClientInCluster(int client_id) {
-    return balances.find(client_id) != balances.end();
+    return utils::getClusterIdFromClientId(client_id) == cluster_id;
 }
 
 bool ServerImpl::processTpcPrepare(TransferReq& request, TransferRes& response) {
-    logger->debug("2PC Prepare received {}", request.DebugString());
+    logger->debug("2PC Prepare received {}. Current tid {}", request.DebugString(), paxos_tid);
     return runPaxos(request, response, true);
 }
 
 void ServerImpl::processTpcDecision(TpcTid& request, bool is_commit) {
+    if (i_am_disconnected) return;
+    
     logger->debug("TPC decision received {}. is_commit {}", request.DebugString(), is_commit);
     auto entry = is_commit ? wal.commitTransaction(request) : wal.abortTransaction(request);
-    log.push_back(entry);
+    if (entry.tid != -1) log.push_back(entry);
 
     if (isClientInCluster(entry.txn.sender)) locks.erase(entry.txn.sender);
     if (isClientInCluster(entry.txn.receiver)) locks.erase(entry.txn.receiver);
 }
 
 bool ServerImpl::processTransferCall(TransferReq& request, TransferRes& response) {
-    logger->debug("Transfer received {}", request.DebugString());    
+    // logger->debug("Transfer received {}", request.DebugString());    
     return runPaxos(request, response, false);
 }
 
@@ -147,7 +152,7 @@ bool ServerImpl::runPaxos(TransferReq& request, TransferRes& response, bool is_c
     int sender = request.txn().sender();
     int receiver = request.txn().receiver();
     int amount = request.txn().amount();
-    int tid = request.tid();
+    long tid = request.tid();
 
     if (is_paxos_running && paxos_tid != tid) return false;
     response.set_tid(tid);
@@ -172,6 +177,7 @@ bool ServerImpl::runPaxos(TransferReq& request, TransferRes& response, bool is_c
         prepare_failures = 0;
         logger->debug("Sending prepare to replicas {}", prepare.DebugString());
         for (auto& pair: stubs) {
+            if (disconnected[pair.first]) continue;
             OutCall* call = new OutCall(this, response_cq.get(), types::PREPARE, ServerImpl::RPC_TIMEOUT_MS);
             call->sendPrepare(prepare, pair.second);
         }
@@ -189,6 +195,8 @@ bool ServerImpl::runPaxos(TransferReq& request, TransferRes& response, bool is_c
                     || (receiver_in_cluster && locks.find(receiver) != locks.end())
                     || (sender_in_cluster && balances[sender] < amount)) {
 
+                is_paxos_running = false;
+                paxos_tid = -1;
                 logger->debug("Transaction conditions not met");
                 response.set_ack(false);
                 return true;
@@ -216,6 +224,7 @@ bool ServerImpl::runPaxos(TransferReq& request, TransferRes& response, bool is_c
 
             logger->debug("Sending accept to replicas {}", accept.DebugString());
             for (auto& pair: stubs) {
+                if (disconnected[pair.first]) continue;
                 OutCall* call = new OutCall(this, response_cq.get(), types::ACCEPT, ServerImpl::RPC_TIMEOUT_MS);
                 call->sendAccept(accept, pair.second);
             }
@@ -242,6 +251,7 @@ bool ServerImpl::runPaxos(TransferReq& request, TransferRes& response, bool is_c
             logger->debug("Sending commit to replicas {}", commit.DebugString());
             // Send commit request to all
             for (auto& pair: stubs) {
+                if (disconnected[pair.first]) continue;
                 OutCall* call = new OutCall(this, response_cq.get(), types::COMMIT, ServerImpl::RPC_TIMEOUT_MS);
                 call->sendCommit(commit, pair.second);
             }
@@ -339,7 +349,10 @@ void ServerImpl::processAcceptCall(AcceptReq& request, AcceptRes& response) {
             ++in_cluster;
         }
 
-        if (in_cluster == 1) prepareTransaction(accept_val, accept_num);
+        if (in_cluster == 1) {
+            logger->debug("Preparing transaction having tid {}", accept_val.tid());
+            prepareTransaction(accept_val, accept_num);
+        }
     }
 
     response.set_ack(ack);
@@ -419,6 +432,31 @@ void ServerImpl::processGetLogsCall(LogRes& response) {
     }
 }
 
+void ServerImpl::resetDisconnectedState() {
+    i_am_disconnected = false;
+    for (auto& pair: constants::server_ids) {
+        std::string name = pair.first;
+        int id = pair.second;
+        if (utils::getClusterIdFromServerId(id) == cluster_id) disconnected[id] = false;
+    }
+}
+
+void ServerImpl::processDisconnectCall(DisconnectReq& request) {
+    logger->debug("Received disconnect request {}", request.DebugString());
+    resetDisconnectedState();
+
+    for (int i = 0; i < request.servers_size(); i++) {
+        std::string name = request.servers(i);
+        int id = constants::server_ids[name];
+
+        if (utils::getClusterIdFromServerId(id) == cluster_id) {
+            logger->debug("Marking {} as disconnected", name);
+            disconnected[id] = true;
+        }
+        if (id == server_id) i_am_disconnected = true;
+    }
+}
+
 void ServerImpl::handlePrepareReply(Status& status, PrepareReq& request, PrepareRes& response) {
     if (!await_prepare_decision) return;
     if (!status.ok() && status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED && request.ballot().num() == promised_num.num() && request.ballot().server_id() == server_id) {
@@ -492,12 +530,15 @@ int main(int argc, char** argv) {
     auto logger = spdlog::stdout_color_mt("console");
     logger->set_level(spdlog::level::debug);
 
-    if (argc != 2) {
-        logger->error("Usage: server <name>\n");
+    if (argc != 4) {
+        logger->error("Usage: server <name> <num_clusters> <cluster_size>\n");
         exit(1);
     }
 
     try {
+        int num_clusters = std::stoi(argv[2]);
+        int cluster_size = std::stoi(argv[3]);
+        utils::setupApplicationState(num_clusters, cluster_size);
         RunServer(std::string(argv[1]));
     } catch (std::exception& e) {
         logger->error("Exception: %s", e.what());

@@ -51,6 +51,9 @@ void InCall::Proceed() {
             case types::RequestTypes::SYNC:
                 service_->RequestSync(&ctx_, &syncReq, &syncResponder, cq_, cq_, this);
                 break;
+            case types::RequestTypes::DISCONNECT:
+                service_->RequestDisconnect(&ctx_, &disconnectReq, &emptyResponder, cq_, cq_, this);
+                break;
         }
         
     } else if (status_ == PROCESS || status_ == RETRY) {
@@ -112,6 +115,11 @@ void InCall::Proceed() {
             case types::RequestTypes::LOGS:
                 server_->processGetLogsCall(logRes);
                 logResponder.Finish(logRes, Status::OK, this);
+                status_ = FINISH;
+                break;
+            case types::RequestTypes::DISCONNECT:
+                server_->processDisconnectCall(disconnectReq);
+                emptyResponder.Finish(empty, Status::OK, this);
                 status_ = FINISH;
                 break;
         }

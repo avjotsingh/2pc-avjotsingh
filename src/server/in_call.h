@@ -27,6 +27,7 @@ using tpc::CommitReq;
 using tpc::SyncReq;
 using tpc::SyncRes;
 using tpc::TpcTid;
+using tpc::DisconnectReq;
 
 class InCall {
 public:
@@ -57,6 +58,7 @@ private:
     CommitReq commitReq;
     SyncReq syncReq;
     SyncRes syncRes;
+    DisconnectReq disconnectReq;
 
     // The means to get back to the client.
     ServerAsyncResponseWriter<google::protobuf::Empty> emptyResponder;

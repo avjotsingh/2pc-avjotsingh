@@ -85,6 +85,11 @@ class TpcServerStub(object):
                 request_serializer=tpc__pb2.SyncReq.SerializeToString,
                 response_deserializer=tpc__pb2.SyncRes.FromString,
                 _registered_method=True)
+        self.Disconnect = channel.unary_unary(
+                '/tpc.TpcServer/Disconnect',
+                request_serializer=tpc__pb2.DisconnectReq.SerializeToString,
+                response_deserializer=google_dot_protobuf_dot_empty__pb2.Empty.FromString,
+                _registered_method=True)
 
 
 class TpcServerServicer(object):
@@ -152,6 +157,13 @@ class TpcServerServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def Disconnect(self, request, context):
+        """RPCs to support the application
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_TpcServerServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -204,6 +216,11 @@ def add_TpcServerServicer_to_server(servicer, server):
                     servicer.Sync,
                     request_deserializer=tpc__pb2.SyncReq.FromString,
                     response_serializer=tpc__pb2.SyncRes.SerializeToString,
+            ),
+            'Disconnect': grpc.unary_unary_rpc_method_handler(
+                    servicer.Disconnect,
+                    request_deserializer=tpc__pb2.DisconnectReq.FromString,
+                    response_serializer=google_dot_protobuf_dot_empty__pb2.Empty.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -476,6 +493,33 @@ class TpcServer(object):
             '/tpc.TpcServer/Sync',
             tpc__pb2.SyncReq.SerializeToString,
             tpc__pb2.SyncRes.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Disconnect(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tpc.TpcServer/Disconnect',
+            tpc__pb2.DisconnectReq.SerializeToString,
+            google_dot_protobuf_dot_empty__pb2.Empty.FromString,
             options,
             channel_credentials,
             insecure,

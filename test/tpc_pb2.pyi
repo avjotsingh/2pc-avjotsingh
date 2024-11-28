@@ -141,3 +141,9 @@ class SyncRes(_message.Message):
     logs: _containers.RepeatedCompositeFieldContainer[LogEntry]
     last_inserted_ballot: Ballot
     def __init__(self, ack: bool = ..., logs: _Optional[_Iterable[_Union[LogEntry, _Mapping]]] = ..., last_inserted_ballot: _Optional[_Union[Ballot, _Mapping]] = ...) -> None: ...
+
+class DisconnectReq(_message.Message):
+    __slots__ = ("servers",)
+    SERVERS_FIELD_NUMBER: _ClassVar[int]
+    servers: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, servers: _Optional[_Iterable[str]] = ...) -> None: ...

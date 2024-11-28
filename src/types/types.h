@@ -1,4 +1,5 @@
 #pragma once
+#include <vector>
 
 namespace types {
     enum RequestTypes {
@@ -11,7 +12,8 @@ namespace types {
         COMMIT,
         SYNC,
         BALANCE,
-        LOGS
+        LOGS,
+        DISCONNECT
     };
 
     struct Transaction {
@@ -33,11 +35,39 @@ namespace types {
     };
 
     struct WALEntry {
-        int tid;
+        long tid;
         int ballot_num;
         int ballot_server_id;
         Transaction txn;
         TransactionType type;
         TransactionStatus status;
+    };
+
+    struct TransactionSet {
+        int set_no;
+        std::vector<Transaction> transactions;
+        std::vector<std::string> servers;
+        std::vector<std::string> leaders;
+        std::vector<std::string> disconnected;
+    };
+
+    struct CSVLine {
+        int set_no;
+        Transaction transaction;
+        std::vector<std::string> servers;
+        std::vector<std::string> leaders;
+    };
+
+    enum Command {
+        PROCESS_NEXT_SET,
+        PRINT_BALANCE,
+        PRINT_DATASTORE,
+        PRINT_PERFORMANCE,
+        EXIT
+    };
+
+    struct AppCommand {
+        Command command;
+        int client_id;
     };
 }

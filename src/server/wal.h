@@ -17,7 +17,7 @@ class WAL {
 private:
     std::shared_ptr<spdlog::logger> logger;
     const std::string walFile;
-    std::unordered_map<int, std::streampos> transferIndex; // Map for quick lookup of TRANSFER transactions
+    std::unordered_map<long, std::streampos> transferIndex; // Map for quick lookup of TRANSFER transactions
 
     // Helper function to retrieve transaction from the WAL file
     types::WALEntry getTransactionFromFile(std::streampos position);

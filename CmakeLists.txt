@@ -41,18 +41,21 @@ target_link_libraries(tpc_grpc_proto
   ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF})
 
-
+# Add spdlog subdirectory
 add_subdirectory(spdlog)
 
-# Gather all .cc files in the server directory
-file(GLOB_RECURSE SERVER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/server/*.cc" "src/constants.h")
+# Add utils subdirectory
+add_subdirectory(src/utils)
+target_link_libraries(utils spdlog)
 
-message("Server sources ${SERVER_SOURCES}")
+# Gather all .cc files in the server directory
+file(GLOB_RECURSE SERVER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/server/*.cc")
 
 # Build the server executable
 add_executable(server ${SERVER_SOURCES})
 target_link_libraries(server
   tpc_grpc_proto
+  utils
   absl::check
   absl::flags
   absl::flags_parse
@@ -61,3 +64,28 @@ target_link_libraries(server
   ${_REFLECTION}
   ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF})
+
+# Gather all .cc files in the server directory
+file(GLOB_RECURSE CLIENT_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/client/*.cc")
+
+
+# Add client subdirectory
+add_subdirectory(src/client)
+target_link_libraries(client
+  tpc_grpc_proto
+  spdlog
+  utils
+  absl::check
+  absl::flags
+  absl::flags_parse
+  absl::log
+  ${_REFLECTION}
+  ${_GRPC_GRPCPP}
+  ${_PROTOBUF_LIBPROTOBUF})
+
+add_executable(driver "${CMAKE_CURRENT_SOURCE_DIR}/src/driver.cc")
+target_link_libraries(driver
+  client
+  utils
+  spdlog
+)

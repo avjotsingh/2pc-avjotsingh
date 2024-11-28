@@ -18,7 +18,7 @@ types::WALEntry WAL::getTransactionFromFile(std::streampos position) {
 
     std::istringstream iss(transaction);
     std::string command;
-    int tid;
+    long tid;
     int ballot_num;
     int ballot_server_id;
     int sender;
@@ -38,7 +38,7 @@ types::WALEntry WAL::getTransactionFromFile(std::streampos position) {
 
 
 types::WALEntry WAL::prepareTransaction(TransferReq& request, Ballot& ballot) {
-    int tid = request.tid();
+    long tid = request.tid();
     int sender = request.txn().sender();
     int receiver = request.txn().receiver();
     int amount = request.txn().amount();
@@ -68,7 +68,7 @@ types::WALEntry WAL::prepareTransaction(TransferReq& request, Ballot& ballot) {
 }
 
 types::WALEntry WAL::commitTransaction(TransferReq& request, Ballot& ballot) {
-    int tid = request.tid();
+    long tid = request.tid();
     int sender = request.txn().sender();
     int receiver = request.txn().receiver();
     int amount = request.txn().amount();
@@ -89,13 +89,13 @@ types::WALEntry WAL::commitTransaction(TransferReq& request, Ballot& ballot) {
         ballot_num,
         ballot_server_id,
         { sender, receiver, amount },
-        types::TransactionType::CROSS,
+        types::TransactionType::INTRA,
         types::TransactionStatus::COMMITTED
     };
 }
 
 types::WALEntry WAL::commitTransaction(TpcTid& request) {
-    int tid = request.tid();
+    long tid = request.tid();
     auto it = transferIndex.find(tid);
     if (it == transferIndex.end()) {
         logger->debug("Error: Transaction ID " + std::to_string(tid) + " not found.");
@@ -121,7 +121,7 @@ types::WALEntry WAL::commitTransaction(TpcTid& request) {
 }
 
 types::WALEntry WAL::abortTransaction(TpcTid& request) {
-    int tid = request.tid();
+    long tid = request.tid();
     auto it = transferIndex.find(tid);
     if (it == transferIndex.end()) {
         logger->debug("Error: Transaction ID " + std::to_string(tid) + " not found.");
