@@ -36,7 +36,7 @@ void utils::setupApplicationState(int num_clusters, int cluster_size) {
     }
 }
 
-void utils::startAllServers() {
+void utils::startAllServers(int num_clusters, int cluster_size) {
     for (auto& s: constants::server_addresses) {
         pid_t pid = fork();
         if (pid < 0) {
@@ -44,7 +44,7 @@ void utils::startAllServers() {
         } else if (pid > 0) {
             utils::server_pids[s.first] = pid;
         } else {
-            execl("./server", "server", s.first.c_str(), nullptr);
+            execl("./server", "server", s.first.c_str(), std::to_string(num_clusters).c_str(), std::to_string(cluster_size).c_str(), nullptr);
             // if execl fails
             throw std::runtime_error("Failed to start server: " + s.first);
         }
@@ -54,7 +54,7 @@ void utils::startAllServers() {
 void utils::killAllServers() {
     for (auto& p: utils::server_pids) {
         pid_t pid = utils::server_pids[p.first];
-        if (kill(p.second, SIGKILL) == -1) {
+        if (kill(p.second, SIGTERM) == -1) {
             throw std::runtime_error("Failed to kill server: " + p.first);
         } else {
             utils::server_pids.erase(p.first);

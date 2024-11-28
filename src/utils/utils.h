@@ -11,7 +11,7 @@ public:
     static bool isClientInCluster(int client_id, int cluster_id);
     static std::vector<std::string> getServersInCluster(int cluster_id);
     static void setupApplicationState(int num_clusters, int cluster_size);
-    static void startAllServers();
+    static void startAllServers(int num_clusters, int cluster_size);
     static void killAllServers();
 
 private:

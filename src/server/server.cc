@@ -3,6 +3,7 @@
 #include <leveldb/write_batch.h>
 
 #include <map>
+#include <csignal>
 
 #include "server.h"
 #include "in_call.h"
@@ -15,6 +16,7 @@ using grpc::ServerCompletionQueue;
 using grpc::CompletionQueue;
 using grpc::Server;
 
+bool ServerImpl::shutdown = false;
 
 ServerImpl::ServerImpl(int id, std::string name): wal("wal_" + std::to_string(id) + ".log") {
     logger = spdlog::get("console");
@@ -41,6 +43,7 @@ ServerImpl::~ServerImpl() {
     server->Shutdown();
     request_cq->Shutdown();
     response_cq->Shutdown();
+    delete db;
 }
 
 void ServerImpl::run(std::string address) {
@@ -107,7 +110,7 @@ void ServerImpl::HandleRPCs() {
     void* response_tag;
     bool response_ok;
 
-    while (true) {
+    while (!shutdown) {
         // Poll the request queue
         grpc::CompletionQueue::NextStatus request_status = request_cq->AsyncNext(&request_tag, &request_ok, gpr_time_0(GPR_CLOCK_REALTIME));
 
@@ -144,13 +147,17 @@ void ServerImpl::processTpcDecision(TpcTid& request, bool is_commit) {
     
     if (isClientInCluster(entry.txn.sender)) {
         locks.erase(entry.txn.sender);
-        balances[entry.txn.sender] -= entry.txn.amount;
-        updateBalance(entry.txn.sender, balances[entry.txn.sender]);
+        if (is_commit) {
+            balances[entry.txn.sender] -= entry.txn.amount;
+            updateBalance(entry.txn.sender, balances[entry.txn.sender]);
+        }
     }
     if (isClientInCluster(entry.txn.receiver)) {
         locks.erase(entry.txn.receiver);
-        balances[entry.txn.receiver] += entry.txn.amount;
-        updateBalance(entry.txn.receiver, balances[entry.txn.receiver]);
+        if (is_commit) {
+            balances[entry.txn.receiver] += entry.txn.amount;
+            updateBalance(entry.txn.receiver, balances[entry.txn.receiver]);
+        }
     }
 }
 
@@ -573,11 +580,11 @@ void ServerImpl::handleSyncReply(Status& status, SyncRes& response) {
                 log.push_back(entry);
                 wal.insertEntry(entry);
                 
-                if (isClientInCluster(entry.txn.sender)) {
+                if (entry.status == types::TransactionStatus::COMMITTED && isClientInCluster(entry.txn.sender)) {
                     balances[entry.txn.sender] -= entry.txn.amount;
                     updateBalance(entry.txn.sender, balances[entry.txn.sender]);
                 }
-                if (isClientInCluster(entry.txn.receiver)) {
+                if (entry.status == types::TransactionStatus::COMMITTED && isClientInCluster(entry.txn.receiver)) {
                     balances[entry.txn.receiver] += entry.txn.amount;
                     updateBalance(entry.txn.receiver, balances[entry.txn.receiver]);
                 }
@@ -607,11 +614,14 @@ void RunServer(std::string server_name) {
     server.run(address);
 }
 
+void handler(int signal) {
+    ServerImpl::shutdown = true;
+}
 
 int main(int argc, char** argv) {
     auto logger = spdlog::stdout_color_mt("console");
-    logger->set_level(spdlog::level::debug);
-
+    logger->set_level(spdlog::level::info);
+    
     if (argc != 4) {
         logger->error("Usage: server <name> <num_clusters> <cluster_size>\n");
         exit(1);
@@ -622,6 +632,9 @@ int main(int argc, char** argv) {
         int cluster_size = std::stoi(argv[3]);
         utils::setupApplicationState(num_clusters, cluster_size);
         RunServer(std::string(argv[1]));
+        
+        std::signal(SIGINT, handler);
+        std::signal(SIGTERM, handler);
     } catch (std::exception& e) {
         logger->error("Exception: %s", e.what());
     }

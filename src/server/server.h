@@ -59,6 +59,7 @@ public:
     void processGetBalanceCall(BalanceReq&, BalanceRes&);
     void processGetLogsCall(LogRes&);
     void processDisconnectCall(DisconnectReq&);
+    static bool shutdown;
     
 private:
     bool runPaxos(TransferReq&, TransferRes&, bool write_to_wal);

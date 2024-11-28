@@ -38,19 +38,6 @@ void mainloop(CSVReader& reader, Client& client) {
                     if (!reader.readNextSet(set)) {
                         std::cout << "No more transaction sets to read..." << std::endl;
                     } else {
-                        for (auto& s: set.servers) {
-                            std::cout << "server " << s << std::endl;
-                        }
-                        for (auto&l: set.leaders) {
-                            std::cout << "leader " << l << std::endl;
-                        }
-                        for (auto& t: set.transactions) {
-                            std::cout << "transaction " << t.sender << " " << t.receiver << " " << t.amount << std::endl;
-                        }
-                        for (auto& d: set.disconnected) {
-                            std::cout << "disconnected " << d << std::endl;
-                        }
-
                         client.updateDisconnected(set.disconnected);
                         client.processTransactions(set.transactions, set.leaders);
                     }
@@ -92,7 +79,7 @@ int main(int argc, char **argv) {
     }
 
     auto logger = spdlog::stdout_color_mt("console");
-    logger->set_level(spdlog::level::debug);
+    logger->set_level(spdlog::level::info);
     
     int num_clusters = std::stoi(argv[1]);
     int cluster_size = std::stoi(argv[2]);
@@ -100,7 +87,8 @@ int main(int argc, char **argv) {
     std::thread t;
     try {
         utils::setupApplicationState(num_clusters, cluster_size);
-        // utils::startAllServers();
+        utils::startAllServers(num_clusters, cluster_size);
+        
         Client client;
         CSVReader reader(filename);
         std::thread t(&Client::consumeReplies, &client);
