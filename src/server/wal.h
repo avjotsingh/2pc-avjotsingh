@@ -36,4 +36,7 @@ public:
 
     // Aborts a cross shard transaction
     types::WALEntry abortTransaction(TpcTid& request);
+
+    // Inserts an entry into the WAL during synchronization
+    void insertEntry(types::WALEntry entry);
 };

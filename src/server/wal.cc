@@ -99,6 +99,7 @@ types::WALEntry WAL::commitTransaction(TpcTid& request) {
     auto it = transferIndex.find(tid);
     if (it == transferIndex.end()) {
         logger->debug("Error: Transaction ID " + std::to_string(tid) + " not found.");
+        return { -1, -1, -1, { -1, -1, -1 }, types::TransactionType::CROSS, types::TransactionStatus::NO_STATUS };
     }
 
     // Retrieve the corresponding transaction
@@ -135,7 +136,7 @@ types::WALEntry WAL::abortTransaction(TpcTid& request) {
     std::ofstream outFile(walFile, std::ios::app);
     if (!outFile) {
         logger->debug("Error: Unable to open WAL file for writing.");
-        return {-1, -1};
+        return { -1, -1, -1, { -1, -1, -1 }, types::TransactionType::CROSS, types::TransactionStatus::NO_STATUS };
     }
 
     outFile << "CS_ABORT " << tid << " " << txn.ballot_num << " " << txn.ballot_server_id << " " << txn.txn.sender << " " << txn.txn.receiver << " " << txn.txn.amount << "\n";
@@ -146,4 +147,34 @@ types::WALEntry WAL::abortTransaction(TpcTid& request) {
 
     txn.status = types::TransactionStatus::ABORTED;
     return txn;
+}
+
+void WAL::insertEntry(types::WALEntry entry) {
+    std::ofstream outFile(walFile, std::ios::app);
+    if (!outFile) {
+        logger->debug("Error: Unable to open WAL file for writing.");
+        return;
+    }
+
+    std::streampos position;
+    std::string message = entry.type == types::TransactionType::INTRA ? "IS_" : "CS_"; 
+    switch (entry.status) {
+        case types::TransactionStatus::PREPARED:
+            position = outFile.tellp();
+            transferIndex[entry.tid] = position;
+            message += "PREPARE";
+            break;
+        case types::TransactionStatus::COMMITTED:
+            message += "COMMIT";
+            transferIndex.erase(entry.tid);
+            break;
+        case types::TransactionStatus::ABORTED:
+            message += "ABORT";
+            transferIndex.erase(entry.tid);
+            break;
+        default: break;
+    }
+
+    outFile << message << " " << entry.tid << " " << entry.ballot_num << " " << entry.ballot_server_id << " " << entry.txn.sender << " " << entry.txn.receiver << " " << entry.txn.amount << "\n";
+    outFile.close();
 }

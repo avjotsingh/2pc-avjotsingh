@@ -69,9 +69,9 @@ message PrepareRes {
 
     optional Ballot accept_num = 3;
     optional TransferReq accept_val = 4;
-    optional int32 last_inserted = 5;
-    optional int32 server_id = 6;
-
+    optional int32 latest_ballot_num = 5;
+    optional int32 last_inserted = 6;
+    optional int32 server_id = 7;
 }
 
 message AcceptReq {

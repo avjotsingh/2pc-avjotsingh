@@ -21,6 +21,9 @@ Client::Client() {
         std::string name = s.first;
         stubs[name] = TpcServer::NewStub(grpc::CreateChannel(constants::server_addresses[name], grpc::InsecureChannelCredentials()));    
     }
+
+    transactions_processed = 0;
+    total_time = 0.0;
 }
 
 void Client::updateDisconnected(std::vector<std::string> disconnected_servers) {
@@ -118,9 +121,10 @@ void Client::printDatastore() {
         }
     }
 
-    std::cout << std::setw(10) << "Server|" <<  "Datastore|" << std::endl;
+    std::cout << std::setw(10) << "Server|" << std::setw(10) << " " <<  "Datastore" << std::endl;
     for (auto& pair: datastore) {
         std::cout << std::setw(10) << pair.first + "|";
+        std::cout << std::setw(10) << " ";
         
         for (int i = 0; i < pair.second.size(); i++) {
             types::WALEntry e = pair.second[i];
@@ -147,7 +151,7 @@ void Client::printDatastore() {
             entry << "(" << e.txn.sender << ", " << e.txn.receiver << ", " << e.txn.amount << ")]";
             std::cout << entry.str();
         }
-        std::cout << std::endl;
+        std::cout << std::endl << std::endl;
     }
 }
 
@@ -158,6 +162,7 @@ void Client::printPerformance() {
     }
 
     std::cout << "Transactions Processed: " << transactions_processed << std::endl;
+    std::cout << "Time taken: " << total_time << " ns" << std::endl;
     std::cout << "Performance: " << performance << " transactions/second" << std::endl;
 }
 
@@ -213,9 +218,9 @@ void Client::consumeReplies() {
         ClientCall* call = static_cast<ClientCall*>(tag);
         CHECK(ok);
         
-        if (call->type == types::TRANSFER && call->status.ok() && call->reply.ack()) {
+        if (call->type == types::TRANSFER && call->status.ok()) {
             auto epoch = std::chrono::system_clock::now().time_since_epoch();
-            int end_time = std::chrono::duration_cast<std::chrono::nanoseconds>(epoch).count();
+            long end_time = std::chrono::duration_cast<std::chrono::nanoseconds>(epoch).count();
             total_time += (end_time - call->reply.tid());
             ++transactions_processed;
         } else if (call->type == types::RequestTypes::TPC_PREPARE) {
@@ -226,6 +231,11 @@ void Client::consumeReplies() {
             bool commit = processing[tid].successes == 2;
             bool abort = processing[tid].failures > 0 && (processing[tid].successes + processing[tid].failures == 2);
             if (commit || abort) {
+                auto epoch = std::chrono::system_clock::now().time_since_epoch();
+                long end_time = std::chrono::duration_cast<std::chrono::nanoseconds>(epoch).count();
+                total_time += (end_time - tid);
+                ++transactions_processed;
+
                 int sender_cluster = utils::getClusterIdFromClientId(processing[tid].txn.sender);
                 int receiver_cluster = utils::getClusterIdFromClientId(processing[tid].txn.receiver);
 

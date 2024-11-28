@@ -2,6 +2,7 @@
 #include <grpcpp/grpcpp.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <leveldb/db.h>
 #include "tpc.grpc.pb.h"
 
 #include <string.h>
@@ -66,6 +67,7 @@ private:
     void getLogEntryFromLocalLog(types::WALEntry& log, LogEntry* entry);
     bool isClientInCluster(int client_id);
     void resetDisconnectedState();
+    void updateBalance(int client_id, int balance);
 
     std::shared_ptr<spdlog::logger> logger;
     int server_id;
@@ -83,11 +85,12 @@ private:
 
     const static int CLUSTER_SIZE = 3;
     const static int MAJORITY = 2;
-    const static int RETRY_TIMEOUT_MS = 50;
-    const static int RPC_TIMEOUT_MS = 20;
+    const static int RETRY_TIMEOUT_MS = 10;
+    const static int RPC_TIMEOUT_MS = 10;
 
     std::map<int, int> balances;
     std::set<int> locks;
+    leveldb::DB* db;
     WAL wal;
     std::vector<types::WALEntry> log;
     bool is_paxos_running;

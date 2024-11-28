@@ -1,5 +1,6 @@
 #include <grpcpp/grpcpp.h>
 #include "tpc.grpc.pb.h"
+#include <leveldb/write_batch.h>
 
 #include <map>
 
@@ -24,9 +25,6 @@ ServerImpl::ServerImpl(int id, std::string name): wal("wal_" + std::to_string(id
     
     resetDisconnectedState();
     balances = std::map<int, int>();
-    for (int i = 1; i <= constants::total_clients; i++) {
-        if (utils::isClientInCluster(i, cluster_id)) balances[i] = 10;
-    }
     
     is_paxos_running = false;
     paxos_tid = -1;
@@ -59,6 +57,32 @@ void ServerImpl::run(std::string address) {
         if (id != server_id && utils::getClusterIdFromServerId(id) == cluster_id) {
             stubs[id] = TpcServer::NewStub(grpc::CreateChannel(constants::server_addresses[name], grpc::InsecureChannelCredentials()));    
         }
+    }
+
+    leveldb::Options options;
+    options.create_if_missing = true;
+    std::string db_path = server_name + "_db";
+    leveldb::Status status = leveldb::DB::Open(options, db_path, &db);
+    if (!status.ok()) {
+        logger->error("Unable to open/create database: {}", db_path);
+        logger->error(status.ToString());
+        return;
+    }
+
+    // initialize client balances
+    leveldb::WriteBatch batch;
+    for (int i = 1; i <= constants::total_clients; i++) {
+        if (utils::isClientInCluster(i, cluster_id)) {
+            balances[i] = 10;
+            batch.Put(std::to_string(i), "10");
+        }
+    }
+    
+    status = db->Write(leveldb::WriteOptions(), &batch);
+    if (!status.ok()) {
+        logger->error("Failed to initialize client balances");
+        logger->error(status.ToString());
+        return;
     }
 
     logger->info("Server running on {}. Stubs size {}", address, stubs.size());
@@ -117,13 +141,21 @@ void ServerImpl::processTpcDecision(TpcTid& request, bool is_commit) {
     logger->debug("TPC decision received {}. is_commit {}", request.DebugString(), is_commit);
     auto entry = is_commit ? wal.commitTransaction(request) : wal.abortTransaction(request);
     if (entry.tid != -1) log.push_back(entry);
-
-    if (isClientInCluster(entry.txn.sender)) locks.erase(entry.txn.sender);
-    if (isClientInCluster(entry.txn.receiver)) locks.erase(entry.txn.receiver);
+    
+    if (isClientInCluster(entry.txn.sender)) {
+        locks.erase(entry.txn.sender);
+        balances[entry.txn.sender] -= entry.txn.amount;
+        updateBalance(entry.txn.sender, balances[entry.txn.sender]);
+    }
+    if (isClientInCluster(entry.txn.receiver)) {
+        locks.erase(entry.txn.receiver);
+        balances[entry.txn.receiver] += entry.txn.amount;
+        updateBalance(entry.txn.receiver, balances[entry.txn.receiver]);
+    }
 }
 
 bool ServerImpl::processTransferCall(TransferReq& request, TransferRes& response) {
-    // logger->debug("Transfer received {}", request.DebugString());    
+    logger->debug("Transfer received {}. Current tid {}", request.DebugString(), paxos_tid);    
     return runPaxos(request, response, false);
 }
 
@@ -138,6 +170,10 @@ void ServerImpl::prepareTransaction(TransferReq& request, Ballot& ballot) {
 void ServerImpl::commitTransaction(TransferReq& request, Ballot& ballot) {
     auto entry = wal.commitTransaction(request, ballot);
     log.push_back(entry);
+    balances[entry.txn.sender] -= entry.txn.amount;
+    balances[entry.txn.receiver] += entry.txn.amount;
+    updateBalance(entry.txn.sender, balances[entry.txn.sender]);
+    updateBalance(entry.txn.receiver, balances[entry.txn.receiver]);
 
     last_inserted = log.size() - 1;
     last_inserted_ballot = ballot;    
@@ -177,7 +213,6 @@ bool ServerImpl::runPaxos(TransferReq& request, TransferRes& response, bool is_c
         prepare_failures = 0;
         logger->debug("Sending prepare to replicas {}", prepare.DebugString());
         for (auto& pair: stubs) {
-            if (disconnected[pair.first]) continue;
             OutCall* call = new OutCall(this, response_cq.get(), types::PREPARE, ServerImpl::RPC_TIMEOUT_MS);
             call->sendPrepare(prepare, pair.second);
         }
@@ -224,7 +259,6 @@ bool ServerImpl::runPaxos(TransferReq& request, TransferRes& response, bool is_c
 
             logger->debug("Sending accept to replicas {}", accept.DebugString());
             for (auto& pair: stubs) {
-                if (disconnected[pair.first]) continue;
                 OutCall* call = new OutCall(this, response_cq.get(), types::ACCEPT, ServerImpl::RPC_TIMEOUT_MS);
                 call->sendAccept(accept, pair.second);
             }
@@ -251,13 +285,16 @@ bool ServerImpl::runPaxos(TransferReq& request, TransferRes& response, bool is_c
             logger->debug("Sending commit to replicas {}", commit.DebugString());
             // Send commit request to all
             for (auto& pair: stubs) {
-                if (disconnected[pair.first]) continue;
                 OutCall* call = new OutCall(this, response_cq.get(), types::COMMIT, ServerImpl::RPC_TIMEOUT_MS);
                 call->sendCommit(commit, pair.second);
             }
 
             // Update server state
-            if (!is_cross_shard) commitTransaction(request, accept_num);
+            if (!is_cross_shard) {
+                locks.erase(sender);
+                locks.erase(receiver);
+                commitTransaction(request, accept_num);
+            }
             
             promised = false;
             accepted = false;
@@ -291,6 +328,12 @@ bool ServerImpl::runPaxos(TransferReq& request, TransferRes& response, bool is_c
 
 
 void ServerImpl::processPrepareCall(PrepareReq& request, PrepareRes& response) {
+    if (i_am_disconnected) {
+        response.set_ack(false);
+        response.mutable_ballot()->CopyFrom(request.ballot());
+        return;
+    }
+    
     bool ack = false;
     logger->debug("Received prepare {}", request.DebugString());
     if (request.ballot().num() > ballot_num) {
@@ -318,13 +361,20 @@ void ServerImpl::processPrepareCall(PrepareReq& request, PrepareRes& response) {
         response.mutable_accept_num()->CopyFrom(accept_num);
         response.mutable_accept_val()->CopyFrom(accept_val);
     } else if (!ack) {
-        response.set_last_inserted(last_inserted);
         response.set_server_id(server_id);
+        if (request.ballot().num() <= ballot_num) response.set_latest_ballot_num(ballot_num);
+        if (request.last_inserted() < last_inserted) response.set_last_inserted(last_inserted);
     }
     logger->debug("Prepare response {}", response.DebugString());
 }
 
 void ServerImpl::processAcceptCall(AcceptReq& request, AcceptRes& response) {
+    if (i_am_disconnected) {
+        response.set_ack(false);
+        response.mutable_ballot()->CopyFrom(request.ballot());
+        return;
+    }
+    
     bool ack = false;
     logger->debug("Received accept {}", request.DebugString());
     if (promised && request.ballot().num() == promised_num.num()) {
@@ -361,6 +411,10 @@ void ServerImpl::processAcceptCall(AcceptReq& request, AcceptRes& response) {
 }
 
 void ServerImpl::processCommitCall(CommitReq& request) {
+    if (i_am_disconnected) {
+        return;
+    }
+    
     logger->debug("Received commit {}", request.DebugString());
     int commit_ballot_num = request.ballot().num();
     if (promised_num.num() == commit_ballot_num && accept_num.num() == commit_ballot_num) {
@@ -464,6 +518,16 @@ void ServerImpl::handlePrepareReply(Status& status, PrepareReq& request, Prepare
         ++prepare_failures;
     } else if (status.ok() && response.ballot().num() == promised_num.num() && response.ballot().server_id() == server_id) {
         response.ack() ? ++prepare_successes : ++prepare_failures;
+        logger->debug("response last inserted: {}, my last inserted {}", response.last_inserted(), last_inserted);
+        
+        // Leader's ballot number is outdated
+        if (response.has_latest_ballot_num()) {
+            logger->debug("Updating ballot number");
+            ballot_num = response.latest_ballot_num();
+            await_prepare_decision = false;
+        }
+
+        // Leader's log is outdated
         if (response.has_last_inserted() && response.last_inserted() > last_inserted) {
             // Synchronize
             logger->debug("Requesting sync due to prepare reject");
@@ -507,6 +571,16 @@ void ServerImpl::handleSyncReply(Status& status, SyncRes& response) {
                     static_cast<types::TransactionStatus>(e.status())
                 };
                 log.push_back(entry);
+                wal.insertEntry(entry);
+                
+                if (isClientInCluster(entry.txn.sender)) {
+                    balances[entry.txn.sender] -= entry.txn.amount;
+                    updateBalance(entry.txn.sender, balances[entry.txn.sender]);
+                }
+                if (isClientInCluster(entry.txn.receiver)) {
+                    balances[entry.txn.receiver] += entry.txn.amount;
+                    updateBalance(entry.txn.receiver, balances[entry.txn.receiver]);
+                }
             }
 
             ballot_num = response.last_inserted_ballot().num();
@@ -516,6 +590,14 @@ void ServerImpl::handleSyncReply(Status& status, SyncRes& response) {
     }
 
     in_sync = false;
+}
+
+void ServerImpl::updateBalance(int client_id, int balance) {
+    auto status = db->Put(leveldb::WriteOptions(), std::to_string(client_id), std::to_string(balance));
+    if (!status.ok()) {
+        logger->debug("Failed to update client {} balance", client_id);
+        logger->debug(status.ToString());
+    }
 }
 
 void RunServer(std::string server_name) {

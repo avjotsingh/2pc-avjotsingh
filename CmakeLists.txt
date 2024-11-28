@@ -44,6 +44,9 @@ target_link_libraries(tpc_grpc_proto
 # Add spdlog subdirectory
 add_subdirectory(spdlog)
 
+# Add leveldb subdirectory
+add_subdirectory(leveldb)
+
 # Add utils subdirectory
 add_subdirectory(src/utils)
 target_link_libraries(utils spdlog)
@@ -60,7 +63,8 @@ target_link_libraries(server
   absl::flags
   absl::flags_parse
   absl::log
-  spdlog::spdlog
+  spdlog
+  leveldb
   ${_REFLECTION}
   ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF})
