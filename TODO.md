@@ -6,6 +6,7 @@
 - implement the application interface (done)
 - Set state from WAL on server startup (not needed since servers don't shut down)
 - update account balances while synchronizing (done)
-- move server startup inside driver code
-- print which transaction was aborted on the client side
-- test with configurable clusters sizes and clusters
+- move server startup inside driver code (done)
+- print which transaction was aborted on the client side (won't do)
+- test with configurable clusters sizes and clusters (done)
+- servers are not terminating correctly on exit
